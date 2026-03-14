@@ -38,7 +38,7 @@ namespace {
     bool parsePositiveLevelID(std::string_view idStr, int& outID) {
         if (idStr.empty()) return false;
 
-        int parsed = geode::utils::numFromString(idStr, 10).unwrapOr(-1);
+        int parsed = geode::utils::numFromString<int>(idStr, 10).unwrapOr(-1);
         if (parsed <= 0) return false;
 
         outID = parsed;

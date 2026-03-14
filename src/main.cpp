@@ -4,6 +4,7 @@
 // ReSharper disable once CppUnusedIncludeDirective
 #include <Geode/Geode.hpp>
 #include <Geode/Bindings.hpp>
+#include <Geode/utils/general.hpp>
 /**
  * Required to modify the MenuLayer class
  */
@@ -34,30 +35,25 @@ namespace {
         return path;
     }
 
-    bool parsePositiveLevelID(std::string_view idPart, int& outID) {
-        idPart = trimSlashes(idPart);
-        if (idPart.empty()) {
-            return false;
-        }
+    bool parsePositiveLevelID(std::string_view idStr, int& outID) {
+        if (idStr.empty()) return false;
 
-        int parsed = 0;
-        const auto [ptr, ec] = std::from_chars(idPart.data(), idPart.data() + idPart.size(), parsed);
-        if (ec != std::errc() || ptr != idPart.data() + idPart.size() || parsed <= 0) {
-            return false;
-        }
+        int parsed = geode::utils::numFromString(idStr, 10).unwrapOr(-1);
+        if (parsed <= 0) return false;
 
         outID = parsed;
         return true;
     }
 
     bool openLevelInfoByID(int levelID) {
-        auto level = GameLevelManager::get()->getSavedLevel(levelID);
+        auto levelManager = GameLevelManager::get();
+        auto level = levelManager->getSavedLevel(levelID);
         if (!level) {
-            level = GJGameLevel::create();
+            levelManager->downloadLevel(levelID, false, false);
+            level = levelManager->getSavedLevel(levelID);
             if (!level) {
                 return false;
             }
-            level->m_levelID = levelID;
         }
 
         auto scene = LevelInfoLayer::scene(level, false);
@@ -65,18 +61,12 @@ namespace {
         return true;
     }
 
-    bool handleGDDLPlayURI(std::string_view path) {
+    bool handleGddlPlayUri(std::string_view path) {
         path = trimSlashes(path);
-
-        if (path.rfind("play/", 0) == 0) {
-            path.remove_prefix(5);
-        }
+        if (path.rfind("play/", 0) == 0) path.remove_prefix(5);
 
         int levelID = 0;
-        if (!parsePositiveLevelID(path, levelID)) {
-            return false;
-        }
-
+        if (!parsePositiveLevelID(path, levelID)) return false;
         return openLevelInfoByID(levelID);
     }
 }
@@ -133,10 +123,10 @@ class $modify(MenuLayer) {
 
 $on_mod(Loaded) {
     URIEvent("gddl").listen([](std::string_view path) {
-        return handleGDDLPlayURI(path);
+        return handleGddlPlayUri(path);
     }).leak();
 
     URIEvent("gddl/play").listen([](std::string_view path) {
-        return handleGDDLPlayURI(path);
+        return handleGddlPlayUri(path);
     }).leak();
 }

@@ -3,11 +3,15 @@
  */
 // ReSharper disable once CppUnusedIncludeDirective
 #include <Geode/Geode.hpp>
+#include <Geode/Bindings.hpp>
 /**
  * Required to modify the MenuLayer class
  */
 #include <Geode/modify/MenuLayer.hpp>
 #include <Geode/utils/web.hpp>
+#include <camila314.geode-uri/include/GeodeURI.hpp>
+
+#include <charconv>
 
 #include "RatingsManager.h"
 #include "Utils.h"
@@ -18,6 +22,64 @@
  * to the current scope.
  */
 using namespace geode::prelude;
+
+namespace {
+    std::string_view trimSlashes(std::string_view path) {
+        while (!path.empty() && path.front() == '/') {
+            path.remove_prefix(1);
+        }
+        while (!path.empty() && path.back() == '/') {
+            path.remove_suffix(1);
+        }
+        return path;
+    }
+
+    bool parsePositiveLevelID(std::string_view idPart, int& outID) {
+        idPart = trimSlashes(idPart);
+        if (idPart.empty()) {
+            return false;
+        }
+
+        int parsed = 0;
+        const auto [ptr, ec] = std::from_chars(idPart.data(), idPart.data() + idPart.size(), parsed);
+        if (ec != std::errc() || ptr != idPart.data() + idPart.size() || parsed <= 0) {
+            return false;
+        }
+
+        outID = parsed;
+        return true;
+    }
+
+    bool openLevelInfoByID(int levelID) {
+        auto level = GameLevelManager::get()->getSavedLevel(levelID);
+        if (!level) {
+            level = GJGameLevel::create();
+            if (!level) {
+                return false;
+            }
+            level->m_levelID = levelID;
+        }
+
+        auto scene = LevelInfoLayer::scene(level, false);
+        CCDirector::sharedDirector()->pushScene(CCTransitionFade::create(0.5f, scene));
+        return true;
+    }
+
+    bool handleGDDLPlayURI(std::string_view path) {
+        path = trimSlashes(path);
+
+        if (path.rfind("play/", 0) == 0) {
+            path.remove_prefix(5);
+        }
+
+        int levelID = 0;
+        if (!parsePositiveLevelID(path, levelID)) {
+            return false;
+        }
+
+        return openLevelInfoByID(levelID);
+    }
+}
 
 /**
  * `$modify` lets you extend and modify GD's
@@ -68,3 +130,13 @@ class $modify(MenuLayer) {
         RatingsManager::cacheList(true); // cache modified list on every exit
     }
 };
+
+$on_mod(Loaded) {
+    URIEvent("gddl").listen([](std::string_view path) {
+        return handleGDDLPlayURI(path);
+    }).leak();
+
+    URIEvent("gddl/play").listen([](std::string_view path) {
+        return handleGDDLPlayURI(path);
+    }).leak();
+}
